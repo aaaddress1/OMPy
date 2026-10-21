@@ -33,13 +33,19 @@ jobs:
           . ./scripts/project-env.ps1 -ProjectRoot $PWD.Path
           $env:HARNESS_API_KEY = 'ci-no-model-calls'
           $env:HARNESS_BASE_URL = 'http://127.0.0.1:1/v1'
+          $env:HARNESS_MODEL = 'ci-no-model-calls'
           $launcher = Join-Path $PWD 'start-canvas.ps1'
           $stack = Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $launcher + '"'), '-NoBrowser', '-Port', '18080') -RedirectStandardOutput '.runtime/ci-start.out.log' -RedirectStandardError '.runtime/ci-start.err.log'
           try {
             & .tools/agent-env/Scripts/python.exe scripts/check_canvas.py --timeout 120
             $checkExit = $LASTEXITCODE
           } finally {
-            taskkill /PID $stack.Id /T /F 2>$null
+            if ($checkExit -ne 0) {
+              Get-Content '.runtime/ci-start.out.log', '.runtime/ci-start.err.log' -ErrorAction SilentlyContinue
+            }
+            if (Get-Process -Id $stack.Id -ErrorAction SilentlyContinue) {
+              taskkill /PID $stack.Id /T /F
+            }
           }
           exit $checkExit
       - uses: actions/upload-artifact@v4
