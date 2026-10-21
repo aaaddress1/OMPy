@@ -1,0 +1,8 @@
+20260315 172221|LON-FS02|admin|file_write
+20260315 182137|TPE-DC02|alice|logoff
+20260315 185052|SFO-WS07|admin|process_start
+20260315 193054|TPE-WS03|carol|logoff
+20260315 195023|SFO-WS07|admin|file_read
+20260315 202426|TPE-DC02|bob|process_start
+20260315 210002|LON-FS02|admin|file_read
+20260315 214819|TPE-DC02|carol|file_read

@@ -1,0 +1,8 @@
+2026-03-10T12:41:38 NYC-WS01 auditd: acct=bob op=logon
+2026-03-10T13:08:45 TPE-DC02 auditd: acct=carol op=file_read
+2026-03-10T13:33:39 NYC-DC01 auditd: acct=alice op=logoff
+2026-03-10T14:19:14 TPE-DC02 auditd: acct=svc_web op=file_write
+2026-03-10T15:08:10 NYC-DC01 auditd: acct=bob op=file_read
+2026-03-10T15:35:35 TPE-DC02 auditd: acct=bob op=file_write
+2026-03-10T16:20:16 LON-FS02 auditd: acct=svc_web op=process_start
+2026-03-10T16:38:58 TPE-WS03 auditd: acct=alice op=logon

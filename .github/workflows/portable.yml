@@ -1,0 +1,48 @@
+name: OMPy Windows portable startup
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build project-local runtime
+        shell: powershell
+        run: ./start-canvas.ps1 -SetupOnly
+      - name: Check portable config, packaging and agent runtime
+        shell: powershell
+        run: |
+          . ./scripts/project-env.ps1 -ProjectRoot $PWD.Path
+          $uv = (Get-ChildItem .tools/uv-*/uv.exe | Select-Object -First 1).FullName
+          & $uv pip install --python .tools/agent-env/Scripts/python.exe pytest
+          & .tools/agent-env/Scripts/python.exe -m pytest tests/test_portable.py tests/test_release.py mini-swe-agent/tests/test_windows_console.py mini-swe-agent/tests/test_context_compaction.py mini-swe-agent/tests/models/test_windows_stream.py -q --override-ini="addopts="
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $node = (Get-ChildItem .tools/node-*/node.exe | Select-Object -First 1).FullName
+          & $node scripts/check_canvas_privacy.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:UV_PYTHON = (& $uv python find --managed-python 3.13.16).Trim()
+          $uvx = Join-Path (Split-Path $uv) 'uvx.exe'
+          & $uvx --from openhands-agent-server==1.56.0 --with openhands-sdk==1.56.0 --with openhands-tools==1.56.0 --with openhands-workspace==1.56.0 --with 'posthog>=6,<7' python scripts/check_openhands_thoughts.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .tools/agent-env/Scripts/python.exe scripts/package_source.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .tools/agent-env/Scripts/python.exe scripts/check_release.py --zip dist/OMPy-source.zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Start UI and validate the local API without model calls
+        shell: powershell
+        run: |
+          . ./scripts/project-env.ps1 -ProjectRoot $PWD.Path
+          $env:HARNESS_API_KEY = 'ci-no-model-calls'
+          $env:HARNESS_BASE_URL = 'http://127.0.0.1:1/v1'
+          $launcher = Join-Path $PWD 'start-canvas.ps1'
+          $stack = Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $launcher + '"'), '-NoBrowser', '-Port', '18080') -RedirectStandardOutput '.runtime/ci-start.out.log' -RedirectStandardError '.runtime/ci-start.err.log'
+          try {
+            & .tools/agent-env/Scripts/python.exe scripts/check_canvas.py --timeout 120
+            $checkExit = $LASTEXITCODE
+          } finally {
+            taskkill /PID $stack.Id /T /F 2>$null
+          }
+          exit $checkExit
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OMPy-source
+          path: dist/OMPy-source.zip

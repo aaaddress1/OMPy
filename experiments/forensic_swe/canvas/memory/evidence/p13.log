@@ -1,0 +1,8 @@
+1773401030|BER-SQL01|svc_web|logon
+1773403858|SFO-WS07|svc_bkp|file_write
+1773405215|NYC-WS01|carol|process_start
+1773408476|BER-SQL01|bob|file_write
+1773410453|BER-SQL01|svc_bkp|file_write
+1773413267|LON-FS02|bob|file_write
+1773414882|BER-SQL01|bob|file_read
+1773416880|SFO-WS07|svc_bkp|process_start

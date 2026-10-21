@@ -1,0 +1,8 @@
+2026-03-18T18:00:49 BER-SQL01 auditd: acct=alice op=file_read
+2026-03-18T18:40:16 SFO-WS07 auditd: acct=admin op=file_read
+2026-03-18T18:52:29 LON-FS02 auditd: acct=svc_web op=logoff
+2026-03-18T19:39:32 NYC-WS01 auditd: acct=carol op=process_start
+2026-03-18T20:05:47 BER-SQL01 auditd: acct=svc_web op=logon
+2026-03-18T20:50:04 SFO-WS07 auditd: acct=alice op=logoff
+2026-03-18T21:32:45 NYC-DC01 auditd: acct=alice op=file_write
+2026-03-18T22:13:44 LON-FS02 auditd: acct=admin op=file_read

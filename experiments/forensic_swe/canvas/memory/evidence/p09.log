@@ -1,0 +1,8 @@
+20260318 202432 NYC-DC01 auditd: acct=bob op=logoff
+20260318 210352 LON-FS02 auditd: acct=carol op=logon
+20260318 215832 BER-SQL01 auditd: acct=carol op=logoff
+20260318 224113 NYC-DC01 auditd: acct=admin op=logon
+20260318 231420 BER-SQL01 auditd: acct=admin op=logoff
+20260318 233219 SFO-WS07 auditd: acct=admin op=logoff
+20260319 000545 NYC-DC01 auditd: acct=carol op=logon
+20260319 010228 SFO-WS07 auditd: acct=admin op=file_read

@@ -1,0 +1,7 @@
+{
+  "name": "ompy-canvas",
+  "private": true,
+  "dependencies": {
+    "@openhands/agent-canvas": "1.28.1"
+  }
+}

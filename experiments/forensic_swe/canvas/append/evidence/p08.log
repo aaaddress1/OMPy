@@ -1,0 +1,8 @@
+[03/12/2026 11:01:13 PM] host=LON-FS02 user=bob event=logoff
+[03/12/2026 11:32:05 PM] host=LON-FS02 user=alice event=file_write
+[03/13/2026 12:00:41 AM] host=BER-SQL01 user=carol event=logoff
+[03/13/2026 12:47:19 AM] host=NYC-WS01 user=carol event=logoff
+[03/13/2026 01:22:50 AM] host=BER-SQL01 user=carol event=logoff
+[03/13/2026 01:59:06 AM] host=BER-SQL01 user=admin event=process_start
+[03/13/2026 02:51:38 AM] host=NYC-WS01 user=bob event=logoff
+[03/13/2026 03:03:51 AM] host=NYC-DC01 user=svc_web event=logon

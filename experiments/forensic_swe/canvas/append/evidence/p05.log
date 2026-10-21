@@ -1,0 +1,8 @@
+[20260313 130710] host=SFO-WS07 user=admin event=file_read
+[20260313 132500] host=BER-SQL01 user=svc_bkp event=logon
+[20260313 141652] host=NYC-DC01 user=admin event=file_write
+[20260313 144052] host=BER-SQL01 user=admin event=logon
+[20260313 152412] host=LON-FS02 user=svc_bkp event=logon
+[20260313 155536] host=SFO-WS07 user=admin event=logoff
+[20260313 164106] host=SFO-WS07 user=carol event=process_start
+[20260313 171801] host=LON-FS02 user=svc_bkp event=process_start

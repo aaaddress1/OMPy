@@ -1,0 +1,8 @@
+BER-SQL01,process_start,svc_web,03/15/2026 06:47:18 PM
+NYC-WS01,logoff,svc_web,03/15/2026 07:27:37 PM
+SFO-WS07,logoff,svc_web,03/15/2026 08:15:51 PM
+LON-FS02,file_write,alice,03/15/2026 08:40:35 PM
+NYC-WS01,process_start,bob,03/15/2026 09:27:32 PM
+LON-FS02,logon,svc_web,03/15/2026 10:09:25 PM
+LON-FS02,process_start,admin,03/15/2026 10:35:02 PM
+NYC-DC01,process_start,bob,03/15/2026 11:15:25 PM

@@ -1,0 +1,8 @@
+LON-FS02,file_read,svc_web,03/12/2026 10:02:17 PM
+NYC-WS01,file_read,alice,03/12/2026 10:33:30 PM
+SFO-WS07,file_read,bob,03/12/2026 11:07:21 PM
+BER-SQL01,process_start,bob,03/12/2026 11:35:16 PM
+NYC-WS01,logon,bob,03/13/2026 12:22:52 AM
+NYC-WS01,file_write,bob,03/13/2026 12:58:09 AM
+SFO-WS07,logoff,admin,03/13/2026 01:45:32 AM
+BER-SQL01,logoff,svc_web,03/13/2026 02:20:51 AM

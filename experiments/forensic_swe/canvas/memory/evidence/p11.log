@@ -1,0 +1,8 @@
+20260315 203211 NYC-DC01 auditd: acct=carol op=file_write
+20260315 210336 TPE-WS03 auditd: acct=svc_web op=file_write
+20260315 215640 LON-FS02 auditd: acct=svc_web op=process_start
+20260315 223810 TPE-WS03 auditd: acct=admin op=logon
+20260315 231316 NYC-WS01 auditd: acct=carol op=logon
+20260315 232949 TPE-WS03 auditd: acct=svc_web op=logoff
+20260316 002924 SFO-WS07 auditd: acct=svc_web op=logoff
+20260316 010820 TPE-DC02 auditd: acct=bob op=process_start

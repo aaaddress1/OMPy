@@ -1,0 +1,8 @@
+20260314 090251 NYC-DC01 auditd: acct=admin op=process_start
+20260314 092927 TPE-WS03 auditd: acct=svc_web op=file_read
+20260314 101835 NYC-DC01 auditd: acct=admin op=file_write
+20260314 105252 TPE-DC02 auditd: acct=svc_web op=file_read
+20260314 111434 BER-SQL01 auditd: acct=admin op=process_start
+20260314 120129 TPE-WS03 auditd: acct=bob op=logoff
+20260314 124537 NYC-DC01 auditd: acct=alice op=process_start
+20260314 133054 TPE-DC02 auditd: acct=alice op=logon
