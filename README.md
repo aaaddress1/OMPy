@@ -85,7 +85,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Console
 
 - 回覆即時串流，支援 Markdown 與程式碼配色。思考區只顯示模型實際回傳的推理欄位，可收起；未回傳時不補造內容。
 - 工具結果預設六行，可用 `/last` 展開完整的上一個工具輸出。錯誤退出碼、記憶操作與背景摘要會分別顯示。
-- 輸入編輯器支援多行貼上、Alt+Enter 換行、Enter 送出、Tab 指令補全和方向鍵歷史；提示列顯示模型上下文用量、輸出 tokens 與推理設定。
+- 輸入 `/` 即時展開含中文說明的指令選單，繼續輸入可篩選，↑↓ 選擇、Enter 補入、再按 Enter 執行，Esc 收起；`/reasoning ` 另列出推理程度。Tab 可補全或切換候選，一般文字中的 `/` 不會觸發選單。
+- 輸入編輯器支援多行貼上、Alt+Enter 換行、Enter 送出及選單外的方向鍵歷史；提示列顯示模型上下文用量、輸出 tokens 與推理設定。
 - `/help` 查看指令；`/thoughts` 切換思考顯示，`/tools` 切換工具預覽，`/new` 新對話，`/exit` 或空輸入時 Ctrl+D 離開。Ctrl+C 中止目前輸入或執行。
 
 需要輸出轉存時，先載入 `scripts/project-env.ps1`，再使用專案的 `.tools/agent-env/Scripts/python.exe -m minisweagent.run.windows_console --plain`。`scripts/preview_console.py` 可產生純合成內容的 SVG／HTML 預覽，不載入 API key 或呼叫模型。WebUI 仍由 `start.cmd` 啟動。

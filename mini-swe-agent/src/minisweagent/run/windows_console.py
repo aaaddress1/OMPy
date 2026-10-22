@@ -140,13 +140,16 @@ def main(
                 ui.input_tokens, ui.output_tokens, ui.calls = 0, 0, 0
                 ui.notice("已開始新對話；先前紀錄留在本機")
                 continue
-            if task is None and prompt.startswith("/reasoning "):
-                effort = prompt.split(maxsplit=1)[1]
+            if task is None and (prompt == "/reasoning" or prompt.startswith("/reasoning ")):
+                effort = prompt.partition(" ")[2].strip()
                 if effort not in {"none", "low", "high"}:
                     ui.notice("可使用：/reasoning none、/reasoning low、/reasoning high")
                     continue
                 model.config.reasoning_effort = effort
                 ui.notice(f"推理程度已切換為 {effort}")
+                continue
+            if task is None and prompt.startswith("/"):
+                ui.notice("未知指令；輸入 / 開啟選單，或 /help 查看指令", error=True)
                 continue
             turn += 1
             model.run_dir = session_dir / f"turn-{turn:04d}"

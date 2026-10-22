@@ -3,11 +3,14 @@
 import json
 import re
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 from prompt_toolkit import PromptSession
-from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.completion import CompleteEvent, Completer, Completion
+from prompt_toolkit.document import Document
+from prompt_toolkit.filters import has_completions
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
@@ -35,12 +38,36 @@ def compact_number(value: int) -> str:
     return f"{value / 1_000_000:.1f}M" if value >= 1_000_000 else f"{value / 1000:.1f}k" if value >= 1000 else str(value)
 
 
+class CommandCompleter(Completer):
+    def get_completions(self, document: Document, complete_event: CompleteEvent) -> Iterator[Completion]:
+        text = document.text
+        if not text.startswith("/") or "\n" in text or document.cursor_position != len(text):
+            return
+        choices = ({f"/reasoning {level}": label for level, label in
+                    (("none", "停用推理"), ("low", "低程度推理"), ("high", "高程度推理"))}
+                   if text.startswith("/reasoning ") else COMMANDS)
+        for command, description in choices.items():
+            if command.startswith(text):
+                yield Completion(command, start_position=-len(text), display_meta=description)
+
+
 def input_session(**kwargs) -> PromptSession:
     bindings = KeyBindings()
+    completer = CommandCompleter()
 
     @bindings.add("enter")
     def submit(event):
-        event.current_buffer.validate_and_handle()
+        buffer = event.current_buffer
+        state = buffer.complete_state
+        if state and state.current_completion:
+            buffer.complete_state = None
+        elif state and state.completions and buffer.text not in COMMANDS:
+            buffer.apply_completion(state.completions[0])
+        elif buffer.text != "/reasoning":
+            buffer.validate_and_handle()
+            return
+        if buffer.text == "/reasoning":
+            buffer.insert_text(" ")
 
     @bindings.add("escape", "enter")
     def newline(event):
@@ -49,16 +76,29 @@ def input_session(**kwargs) -> PromptSession:
     @bindings.add("tab")
     def complete(event):
         buffer = event.current_buffer
-        matches = [command for command in COMMANDS if command.startswith(buffer.text)]
-        if buffer.text.startswith("/") and len(matches) == 1:
-            buffer.text, buffer.cursor_position = matches[0], len(matches[0])
-        else:
-            buffer.start_completion(select_first=False)
+        matches = list(completer.get_completions(buffer.document, CompleteEvent(completion_requested=True)))
+        if buffer.complete_state and buffer.complete_state.current_completion:
+            buffer.complete_next()
+        elif len(matches) == 1:
+            buffer.apply_completion(matches[0])
+        elif matches:
+            if buffer.complete_state:
+                buffer.complete_next()
+            else:
+                buffer.start_completion(select_first=True)
+
+    @bindings.add("escape", filter=has_completions)
+    def dismiss(event):
+        event.current_buffer.cancel_completion()
 
     return PromptSession(multiline=True, key_bindings=bindings, history=InMemoryHistory(),
-        completer=WordCompleter(list(COMMANDS), meta_dict=COMMANDS), complete_while_typing=True,
-        enable_history_search=True, prompt_continuation="   · ", reserve_space_for_menu=3,
+        completer=completer, complete_while_typing=True,
+        enable_history_search=False, prompt_continuation="   · ", reserve_space_for_menu=len(COMMANDS) + 1,
         style=Style.from_dict({"frame": "#334155", "brand": "#5eead4 bold", "hint": "#94a3b8",
+                              "completion-menu.completion": "bg:#17212f #e2e8f0",
+                              "completion-menu.completion.current": "bg:#115e59 #ffffff bold",
+                              "completion-menu.meta.completion": "bg:#17212f #94a3b8",
+                              "completion-menu.meta.completion.current": "bg:#115e59 #ffffff",
                               "bottom-toolbar": "bg:#17212f #94a3b8"}), **kwargs)
 
 
@@ -89,7 +129,7 @@ class ConsoleUI:
 
     def welcome(self) -> None:
         self.console.print(self.header())
-        self.console.print(Text("  輸入任務即可開始  ·  /help 快捷鍵  ·  /new 新對話", style=MUTED))
+        self.console.print(Text("  輸入任務即可開始  ·  / 即時指令選單  ·  /help 快捷鍵", style=MUTED))
         self.console.print()
 
     def prompt(self) -> str:
@@ -100,7 +140,7 @@ class ConsoleUI:
         return self._editor.prompt([("class:frame", "╭─ "), ("class:brand", "OMPy"),
             ("class:hint", "  想完成什麼？\n"), ("class:frame", "╰─ "), ("class:brand", "❯ ")],
             bottom_toolbar=lambda: self.status(),
-            rprompt=[("class:hint", "Enter 送出 · Alt+Enter 換行")]).strip()
+            rprompt=[("class:hint", "/ 選單 · Enter 確認／送出 · Alt+Enter 換行")]).strip()
 
     def user(self, text: str) -> None:
         self.console.print(Panel(Text(terminal_text(text)), title="你", title_align="left", border_style=BORDER, padding=(0, 1)))
@@ -202,7 +242,8 @@ class ConsoleUI:
     def command(self, text: str) -> bool:
         if text == "/help":
             self.console.print(Panel(Text("\n".join(f"{key:12} {value}" for key, value in COMMANDS.items())
-                + "\n\nEnter 送出 · Alt+Enter 換行 · Tab 補全 · ↑↓ 歷史 · Ctrl+C 中止 · Ctrl+D 離開"),
+                + "\n\n/ 開啟選單 · ↑↓ 選擇 · Enter 補入，再按送出 · Esc 收起"
+                + "\nAlt+Enter 換行 · Tab 補全 · 選單外 ↑↓ 歷史 · Ctrl+C 中止 · Ctrl+D 離開"),
                 title="快捷鍵", border_style=BORDER))
         elif text == "/thoughts":
             self.thoughts = not self.thoughts
