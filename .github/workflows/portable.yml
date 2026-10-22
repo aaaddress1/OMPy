@@ -14,7 +14,7 @@ jobs:
           . ./scripts/project-env.ps1 -ProjectRoot $PWD.Path
           $uv = (Get-ChildItem .tools/uv-*/uv.exe | Select-Object -First 1).FullName
           & $uv pip install --python .tools/agent-env/Scripts/python.exe pytest
-          & .tools/agent-env/Scripts/python.exe -m pytest tests/test_portable.py tests/test_release.py mini-swe-agent/tests/test_windows_console.py mini-swe-agent/tests/test_context_compaction.py mini-swe-agent/tests/models/test_windows_stream.py -q --override-ini="addopts="
+          & .tools/agent-env/Scripts/python.exe -m pytest tests/test_portable.py tests/test_release.py tests/test_context_layers.py mini-swe-agent/tests/test_windows_console.py mini-swe-agent/tests/test_context_compaction.py mini-swe-agent/tests/models/test_windows_stream.py mini-swe-agent/tests/models/test_actions_toolcall.py -q --override-ini="addopts="
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $node = (Get-ChildItem .tools/node-*/node.exe | Select-Object -First 1).FullName
           & $node scripts/check_canvas_privacy.mjs

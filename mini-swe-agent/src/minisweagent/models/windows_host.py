@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from minisweagent.context_compaction import CompactContextManager, ContextCompactionError
 from minisweagent.context_manager import ContextManager
+from minisweagent.context_store import CONTEXT_TOOL
 from minisweagent.exceptions import FormatError
 from minisweagent.models.utils.actions_toolcall import parse_toolcall_actions
 from minisweagent.models.utils.chat_stream import collect_completion
@@ -83,9 +84,11 @@ class WindowsHostModel:
 
     def notes(self) -> list[str] | None:
         """memory policy: the agent appends notes to a session file with PowerShell; every window shows them."""
-        if self.config.context_policy != "memory":
+        if self.config.context_policy not in {"memory", "compact"}:
             return None
         path = (self.run_dir.parent / "notes.md").resolve()
+        if self.config.context_policy == "compact":
+            return [f"舊筆記檔：{path}；需要時用 PowerShell 分段讀取。"] if path.exists() else None
         lines = path.read_text(encoding="utf-8-sig").splitlines() if path.exists() else []
         return [f"（筆記檔：{path}。用 PowerShell 以 Add-Content -Encoding utf8 每行附加一則；重要發現與進度請記在這裡）"] + [
             line for line in lines if line.strip()
@@ -94,12 +97,13 @@ class WindowsHostModel:
     def query(self, messages: list[dict], **kwargs) -> dict:
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.request_count += 1
+        tools = [POWERSHELL_TOOL] + ([CONTEXT_TOOL] if self.config.context_policy == "compact" else [])
         request = {
             "model": self.config.model_name,
             "messages": self.context.prepare(
-                messages, [POWERSHELL_TOOL], archive=self.run_dir.parent, notes=self.notes()
+                messages, tools, archive=self.run_dir.parent, notes=self.notes()
             ),
-            "tools": [POWERSHELL_TOOL],
+            "tools": tools,
             "parallel_tool_calls": False,
             "max_completion_tokens": self.config.max_output_tokens,
             "reasoning_effort": self.config.reasoning_effort,
@@ -124,24 +128,7 @@ class WindowsHostModel:
         extra = {"cost": 0.0, "response": response.model_dump(mode="json"), "actions": []}
         extra["streamed"] = self.on_delta is not None
         if response.choices[0].message.tool_calls:
-            canonical = [
-                call.model_copy(
-                    update={
-                        "function": call.function.model_copy(
-                            update={"name": "bash" if call.function.name == "powershell" else call.function.name}
-                        )
-                    }
-                )
-                for call in response.choices[0].message.tool_calls
-            ]
-            extra["actions"] = parse_toolcall_actions(
-                canonical,
-                format_error_template="工具格式錯誤：{{ error }}。請使用 powershell 工具，參數為 command 字串。",
-            )
-            if any(
-                not isinstance(action["command"], str) or not action["command"].strip() for action in extra["actions"]
-            ):
-                raise ValueError("PowerShell command 必須是非空字串。")
+            extra["actions"] = self.parse_actions(response.choices[0].message.tool_calls)
         elif response.choices[0].finish_reason == "length" or not (message.get("content") or "").strip():
             raise FormatError(
                 {
@@ -154,6 +141,22 @@ class WindowsHostModel:
             message["role"] = "exit"
             extra.update(exit_status="Submitted", submission=message["content"])
         return message | {"extra": extra}
+
+    def parse_actions(self, calls: list) -> list[dict]:
+        actions = []
+        for call in calls:
+            memory = call.function.name == "context" and self.config.context_policy == "compact"
+            canonical = call.model_copy(update={"function": call.function.model_copy(update={
+                "name": "bash" if memory or call.function.name == "powershell" else call.function.name
+            })})
+            action = parse_toolcall_actions([canonical], command_key=None if memory else "command",
+                format_error_template="工具格式錯誤：{{ error }}。powershell 使用 command 字串；context 使用 operation 及其參數。") [0]
+            if memory:
+                action = action | {"context": action["command"], "command": json.dumps(action["command"], ensure_ascii=False)}
+            elif not isinstance(action["command"], str) or not action["command"].strip():
+                raise FormatError({"role": "user", "content": "PowerShell command 必須是非空字串。"})
+            actions.append(action)
+        return actions
 
     def format_message(self, **kwargs) -> dict:
         return kwargs

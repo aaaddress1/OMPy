@@ -122,7 +122,7 @@ class BridgeAgent(DefaultAgent):
                     start_tool_call(
                         action["tool_call_id"],
                         action["command"].strip().splitlines()[0][:120],
-                        kind="execute",
+                        kind="other" if "context" in action else "execute",
                         status="pending",
                         raw_input={"command": action["command"]},
                     )
@@ -145,6 +145,8 @@ class BridgeAgent(DefaultAgent):
         return super().query()
 
     def allowed(self, action: dict) -> bool:
+        if "context" in action:
+            return True
         if self.session.allow_all:
             return True
         response = self.call(
@@ -248,7 +250,8 @@ class WindowsAcpAgent:
         session.model.request_count = 0
         agent = BridgeAgent(
             session.model,
-            PowerShellEnvironment(output_dir=session.model.run_dir, cwd=session.cwd, timeout=self.command_timeout),
+            PowerShellEnvironment(output_dir=session.model.run_dir, cwd=session.cwd, timeout=self.command_timeout,
+                                  context=session.model.context if isinstance(session.model.context, CompactContextManager) else None),
             session=session,
             conn=self.conn,
             loop=loop,

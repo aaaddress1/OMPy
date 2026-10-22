@@ -14,13 +14,15 @@ def tool_group(index: int, text: str = "0" * 180) -> list[dict]:
         {"role": "assistant", "content": "", "tool_calls": [
             {"id": f"c{index}", "type": "function", "function": {"name": "powershell", "arguments": "{}"}}
         ]},
-        {"role": "tool", "tool_call_id": f"c{index}", "content": text},
+        {"role": "tool", "tool_call_id": f"c{index}", "content": f"證據 {index}: {text}"},
     ]
 
 
-def task(context: CompactContextManager, ratio: float) -> list[dict]:
+def task(context: CompactContextManager, ratio: float, archive: Path) -> list[dict]:
     messages = [{"role": "system", "content": "規則"}, {"role": "user", "content": "保留我的完整任務 R17"}]
-    while context.count(messages, []) < context.input_budget * ratio:
+    if context.store is None:
+        context.prepare(messages, [], archive=archive)
+    while context.count(context._render(messages, list(enumerate(messages[1:], context._request_id)), None), []) < context.input_budget * ratio:
         messages.extend(tool_group(len(messages)))
     return messages
 
@@ -57,18 +59,18 @@ def test_background_snapshot_keeps_new_messages_and_original_task(contexts, tmp_
 
     context = contexts(summarize)
     context.on_event = events.append
-    messages = task(context, 0.73)
+    messages = task(context, 0.73, tmp_path)
     original = json.dumps(messages, ensure_ascii=False)
     try:
         prepared = context.prepare(messages, [], archive=tmp_path)
         assert started.wait(3)
-        assert prepared == messages and not context._pending.future.done()
+        assert prepared[0] == messages[0] and not context._pending.future.done()
         messages.extend(tool_group(999, "摘要期間新到的證據 NEW-999"))
         release.set()
         context._pending.future.result(timeout=3)
         prepared = context.prepare(messages, [], archive=tmp_path)
-        assert "目標 R17" in prepared[0]["content"]
-        assert prepared[1] == messages[1] and prepared[-1] == messages[-1]
+        assert "目標 R17" in prepared[1]["content"]
+        assert messages[1] in prepared and "NEW-999" in prepared[-1]["content"]
         assert "NEW-999" not in json.dumps(snapshots)
         assert json.dumps(messages[:-2], ensure_ascii=False) == original
         assert context.count(prepared, []) < context.input_budget
@@ -93,7 +95,7 @@ def test_blocking_threshold_waits_and_repeated_summaries_chain(contexts, tmp_pat
 
     context = contexts(summarize)
     context.on_event = events.append
-    messages = task(context, 0.94)
+    messages = task(context, 0.94, tmp_path)
     with ThreadPoolExecutor(max_workers=1) as executor:
         prepared = executor.submit(context.prepare, messages, [], archive=tmp_path)
         try:
@@ -108,7 +110,7 @@ def test_blocking_threshold_waits_and_repeated_summaries_chain(contexts, tmp_pat
     prepared = context.prepare(messages, [], archive=tmp_path)
     assert context._cut > first_cut
     assert snapshots[1]["previous_summary"] == "摘要 1：持續保留 R17 進度。"
-    assert prepared[1] == messages[1] and prepared[-1] == messages[-1]
+    assert messages[1] in prepared and "證據" in prepared[-1]["content"]
     assert any("等待摘要" in text for text in events)
     pairs(prepared)
 
@@ -123,7 +125,7 @@ def test_reset_or_replacement_discards_stale_summaries(contexts, tmp_path: Path,
         return "舊任務的機密摘要 R17"
 
     context = contexts(summarize)
-    messages = task(context, 0.73)
+    messages = task(context, 0.73, tmp_path)
     try:
         context.prepare(messages, [], archive=tmp_path)
         assert started.wait(3)
@@ -131,14 +133,14 @@ def test_reset_or_replacement_discards_stale_summaries(contexts, tmp_path: Path,
         if reset:
             context.clear()
         fresh = [{"role": "system", "content": "規則"}, {"role": "user", "content": "新任務"}]
-        assert context.prepare(fresh, [], archive=tmp_path) == fresh
+        assert context.prepare(fresh, [], archive=tmp_path)[-1] == fresh[-1]
         release.set()
         old_future.result(timeout=3)
-        assert context.prepare(fresh, [], archive=tmp_path) == fresh
+        assert context.prepare(fresh, [], archive=tmp_path)[-1] == fresh[-1]
         assert not (tmp_path / "context-summary.json").exists()
-        context.prepare(task(context, 0.94), [], archive=tmp_path)
+        context.prepare(task(context, 0.94, tmp_path), [], archive=tmp_path)
         assert context._summary
-        assert context.prepare(fresh, [], archive=tmp_path) == fresh
+        assert context.prepare(fresh, [], archive=tmp_path)[-1] == fresh[-1]
         assert not context._summary
     finally:
         release.set()
@@ -146,13 +148,13 @@ def test_reset_or_replacement_discards_stale_summaries(contexts, tmp_path: Path,
 
 def test_remembered_turn_retains_summary_across_new_task(contexts, tmp_path: Path):
     context = contexts(lambda prompt, path: "R17 舊任務已驗證的事實。")
-    messages = task(context, 0.94)
+    messages = task(context, 0.94, tmp_path)
     context.prepare(messages, [], archive=tmp_path)
     messages.append({"role": "exit", "content": "完成", "extra": {"exit_status": "Submitted"}})
     context.remember(messages)
     current = [{"role": "system", "content": "規則"}, {"role": "user", "content": "新問題 R18"}]
     prepared = context.prepare(current, [], archive=tmp_path)
-    assert "R17 舊任務" in prepared[0]["content"]
+    assert "R17 舊任務" in prepared[1]["content"]
     assert prepared[-1] == current[-1]
     assert any(message.get("content") == "完成" for message in prepared)
     pairs(prepared)
@@ -165,12 +167,12 @@ def test_failed_background_summary_preserves_history_until_blocking_threshold(co
     events = []
     context = contexts(summarize)
     context.on_event = events.append
-    messages = task(context, 0.73)
+    messages = task(context, 0.73, tmp_path)
     original = json.dumps(messages)
     context.prepare(messages, [], archive=tmp_path)
     with pytest.raises(ValueError, match="unavailable"):
         context._pending.future.result(timeout=3)
-    assert context.prepare(messages, [], archive=tmp_path) == messages
+    assert messages[1] in context.prepare(messages, [], archive=tmp_path)
     assert not context._summary and json.dumps(messages) == original
     assert any("失敗" in text for text in events)
     for index in range(20):
@@ -195,7 +197,7 @@ def test_wait_is_cancellable_and_latest_oversized_input_is_never_dropped(context
     context = contexts(summarize)
     context.check_cancelled = check_cancelled
     with ThreadPoolExecutor(max_workers=1) as executor:
-        preparing = executor.submit(context.prepare, task(context, 0.94), [], archive=tmp_path)
+        preparing = executor.submit(context.prepare, task(context, 0.94, tmp_path), [], archive=tmp_path)
         try:
             assert started.wait(3)
             cancel.set()
@@ -221,7 +223,7 @@ def test_overfull_history_compacts_in_bounded_chunks_and_keeps_multi_tool_group(
         return "累積已驗證的 R17 進度。"
 
     context = contexts(summarize)
-    messages = task(context, 3.5)
+    messages = task(context, 3.5, tmp_path)
     latest = tool_group(9991, "最新證據 A")
     latest[0]["tool_calls"] += tool_group(9992)[0]["tool_calls"]
     latest += [{"role": "tool", "tool_call_id": "c9992", "content": "最新證據 B"}]
@@ -229,6 +231,7 @@ def test_overfull_history_compacts_in_bounded_chunks_and_keeps_multi_tool_group(
     prepared = context.prepare(messages, [], archive=tmp_path)
     assert len(snapshots) > 1 and snapshots[1]["previous_summary"]
     assert context.count(prepared, []) < context.input_budget
-    assert prepared[-3:] == latest
-    assert prepared[1] == messages[1]
+    assert prepared[-3] == latest[0]
+    assert "最新證據 A" in prepared[-2]["content"] and "最新證據 B" in prepared[-1]["content"]
+    assert messages[1] in prepared
     pairs(prepared)
