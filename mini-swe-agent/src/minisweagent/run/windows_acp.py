@@ -121,10 +121,11 @@ class BridgeAgent(DefaultAgent):
                 self.notify(
                     start_tool_call(
                         action["tool_call_id"],
-                        action["command"].strip().splitlines()[0][:120],
+                        {"search": "搜尋對話證據", "read": "回讀原始證據", "remember": "更新記憶筆記", "forget": "移除過時筆記"}.get(
+                            action.get("context", {}).get("operation"), action["command"].strip().splitlines()[0][:120]),
                         kind="other" if "context" in action else "execute",
                         status="pending",
-                        raw_input={"command": action["command"]},
+                        raw_input=action.get("context", {"command": action["command"]}),
                     )
                 )
             if message["role"] == "tool":

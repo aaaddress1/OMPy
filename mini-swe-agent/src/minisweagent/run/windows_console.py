@@ -56,7 +56,7 @@ class ConsoleAgent(DefaultAgent):
                 console.print("\n助理：", style="cyan")
                 console.print(message["content"], markup=False)
             for action in message.get("extra", {}).get("actions", []):
-                console.print("\n執行 PowerShell：", style="yellow")
+                console.print("\n記憶與證據回查：" if "context" in action else "\n執行 PowerShell：", style="yellow")
                 console.print(action["command"], markup=False)
             if message["role"] == "tool":
                 output = json.loads(message["content"])
