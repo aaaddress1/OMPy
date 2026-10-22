@@ -7,7 +7,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 ROOT = Path(__file__).resolve().parents[1]
 EXCLUDE = {".git", ".venv", ".tools", ".runtime", ".runs", ".config", "__pycache__",
            ".pytest_cache", ".ruff_cache", ".bootstrap", "node_modules", "dist", "results", ".vscode"}
-TOP_LEVEL = {"README.md", "LICENSE", ".gitignore", ".env.example", "start.cmd", "install.ps1", "start-canvas.ps1",
+TOP_LEVEL = {"README.md", "LICENSE", ".gitignore", ".env.example", "start.cmd", "start-console.cmd", "install.ps1", "start-canvas.ps1",
              "config", "scripts", "mini-swe-agent", "experiments", "tests", ".github"}
 
 

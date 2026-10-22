@@ -4,6 +4,7 @@ param(
     [string]$ApiBaseUrl,
     [Alias('ApiModel')][string]$Model,
     [switch]$LocalApi,
+    [switch]$Console,
     [switch]$NoBrowser,
     [int]$Port = 8000
 )
@@ -47,7 +48,7 @@ $nodeArch = if ($arch -eq 'ARM64') { 'arm64' } else { 'x64' }
 $uvArch = if ($arch -eq 'ARM64') { 'aarch64' } else { 'x86_64' }
 $nodeHome = Join-Path $tools "node-v$($versions.node)-win-$nodeArch"
 $node = Join-Path $nodeHome 'node.exe'
-if (-not (Test-Path -LiteralPath $node)) {
+if (-not $Console -and -not (Test-Path -LiteralPath $node)) {
     Write-Host '[1/5] Downloading project-local Node.js...'
     $file = "node-v$($versions.node)-win-$nodeArch.zip"
     $base = "https://nodejs.org/download/release/v$($versions.node)"
@@ -81,52 +82,54 @@ if (-not (Test-Path -LiteralPath $agentPython) -or -not (Test-Path -LiteralPath 
 }
 Invoke-Checked $uv @('pip', 'install', '--python', $agentPython, '--require-hashes', '-r', (Join-Path $root 'config\agent-requirements.lock'))
 
-Write-Host '[4/5] Preparing OpenHands Agent Canvas...'
-$canvas = Join-Path $tools 'canvas-runtime'
-New-Item -ItemType Directory -Force -Path $canvas | Out-Null
-$sourceLock = Join-Path $root 'config\canvas\package-lock.json'
-$canvasMarker = Join-Path $canvas '.lock-sha256'
-$lockHash = (Get-FileHash -LiteralPath $sourceLock -Algorithm SHA256).Hash
-$canvasEntry = Join-Path $canvas 'node_modules\@openhands\agent-canvas\bin\agent-canvas.mjs'
-if (-not (Test-Path -LiteralPath $canvasEntry) -or -not (Test-Path -LiteralPath $canvasMarker) -or
-    (Get-Content -LiteralPath $canvasMarker -Raw).Trim() -ne $lockHash) {
-    Copy-Item -LiteralPath (Join-Path $root 'config\canvas\package.json'), $sourceLock -Destination $canvas -Force
-    Push-Location $canvas
-    try {
-        for ($attempt = 1; $attempt -le 3; $attempt++) {
-            try {
-                Invoke-Checked $node @((Join-Path $nodeHome 'node_modules\npm\bin\npm-cli.js'), 'ci', '--no-audit', '--no-fund',
-                    '--maxsockets=4', '--fetch-retries=5', '--fetch-retry-mintimeout=2000', '--fetch-timeout=600000')
-                break
-            } catch {
-                if ($attempt -eq 3) { throw }
-                Write-Host 'Retrying the Canvas dependency download...'
-                Start-Sleep -Seconds 2
+if (-not $Console) {
+    Write-Host '[4/5] Preparing OpenHands Agent Canvas...'
+    $canvas = Join-Path $tools 'canvas-runtime'
+    New-Item -ItemType Directory -Force -Path $canvas | Out-Null
+    $sourceLock = Join-Path $root 'config\canvas\package-lock.json'
+    $canvasMarker = Join-Path $canvas '.lock-sha256'
+    $lockHash = (Get-FileHash -LiteralPath $sourceLock -Algorithm SHA256).Hash
+    $canvasEntry = Join-Path $canvas 'node_modules\@openhands\agent-canvas\bin\agent-canvas.mjs'
+    if (-not (Test-Path -LiteralPath $canvasEntry) -or -not (Test-Path -LiteralPath $canvasMarker) -or
+        (Get-Content -LiteralPath $canvasMarker -Raw).Trim() -ne $lockHash) {
+        Copy-Item -LiteralPath (Join-Path $root 'config\canvas\package.json'), $sourceLock -Destination $canvas -Force
+        Push-Location $canvas
+        try {
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+                try {
+                    Invoke-Checked $node @((Join-Path $nodeHome 'node_modules\npm\bin\npm-cli.js'), 'ci', '--no-audit', '--no-fund',
+                        '--maxsockets=4', '--fetch-retries=5', '--fetch-retry-mintimeout=2000', '--fetch-timeout=600000')
+                    break
+                } catch {
+                    if ($attempt -eq 3) { throw }
+                    Write-Host 'Retrying the Canvas dependency download...'
+                    Start-Sleep -Seconds 2
+                }
             }
         }
+        finally { Pop-Location }
+        Set-Content -LiteralPath $canvasMarker -Value $lockHash -Encoding UTF8
     }
-    finally { Pop-Location }
-    Set-Content -LiteralPath $canvasMarker -Value $lockHash -Encoding UTF8
+    $env:OH_AGENT_SERVER_VERSION = $versions.agentServer
+    $env:OH_AUTOMATION_VERSION = $versions.automation
+    Invoke-Checked $agentPython @((Join-Path $root 'scripts\configure_canvas_runtime.py'))
+    Invoke-Checked $agentPython @((Join-Path $root 'scripts\configure_canvas.py'), '--python', $agentPython)
+    $backendMarker = Join-Path $tools '.backend-versions'
+    $backendVersions = "$root|$managedPython|$($versions.agentServer)|$($versions.automation)"
+    if (-not (Test-Path -LiteralPath $backendMarker) -or
+        (Get-Content -LiteralPath $backendMarker -Raw).Trim() -ne $backendVersions) {
+        # Download before launching: Canvas's normal readiness deadline is only 60 seconds.
+        Write-Host 'Preparing project-local OpenHands backend dependencies (first launch)...'
+        $uvx = Join-Path $uvHome 'uvx.exe'
+        Invoke-Checked $uvx @('--from', "openhands-agent-server==$($versions.agentServer)",
+            '--with', "openhands-sdk==$($versions.agentServer)", '--with', "openhands-tools==$($versions.agentServer)",
+            '--with', "openhands-workspace==$($versions.agentServer)", '--with', 'posthog>=6,<7', 'agent-server', '--help') | Out-Null
+        Invoke-Checked $uvx @('--from', "openhands-automation==$($versions.automation)", 'uvicorn', '--help') | Out-Null
+        Set-Content -LiteralPath $backendMarker -Value $backendVersions -Encoding UTF8
+    }
+    # Backend warmup can initialize settings; apply the project's default after it finishes too.
+    Invoke-Checked $agentPython @((Join-Path $root 'scripts\configure_canvas.py'), '--python', $agentPython)
 }
-$env:OH_AGENT_SERVER_VERSION = $versions.agentServer
-$env:OH_AUTOMATION_VERSION = $versions.automation
-Invoke-Checked $agentPython @((Join-Path $root 'scripts\configure_canvas_runtime.py'))
-Invoke-Checked $agentPython @((Join-Path $root 'scripts\configure_canvas.py'), '--python', $agentPython)
-$backendMarker = Join-Path $tools '.backend-versions'
-$backendVersions = "$root|$managedPython|$($versions.agentServer)|$($versions.automation)"
-if (-not (Test-Path -LiteralPath $backendMarker) -or
-    (Get-Content -LiteralPath $backendMarker -Raw).Trim() -ne $backendVersions) {
-    # Download before launching: Canvas's normal readiness deadline is only 60 seconds.
-    Write-Host 'Preparing project-local OpenHands backend dependencies (first launch)...'
-    $uvx = Join-Path $uvHome 'uvx.exe'
-    Invoke-Checked $uvx @('--from', "openhands-agent-server==$($versions.agentServer)",
-        '--with', "openhands-sdk==$($versions.agentServer)", '--with', "openhands-tools==$($versions.agentServer)",
-        '--with', "openhands-workspace==$($versions.agentServer)", '--with', 'posthog>=6,<7', 'agent-server', '--help') | Out-Null
-    Invoke-Checked $uvx @('--from', "openhands-automation==$($versions.automation)", 'uvicorn', '--help') | Out-Null
-    Set-Content -LiteralPath $backendMarker -Value $backendVersions -Encoding UTF8
-}
-# Backend warmup can initialize settings; apply the project's default after it finishes too.
-Invoke-Checked $agentPython @((Join-Path $root 'scripts\configure_canvas.py'), '--python', $agentPython)
 $apiArgs = @((Join-Path $root 'scripts\configure_canvas.py'), '--check-env')
 if ($ConfigureApi) { $apiArgs += '--configure-api' }
 if ($PSBoundParameters.ContainsKey('ApiBaseUrl')) {
@@ -141,7 +144,11 @@ if ($LocalApi) { $apiArgs += '--local-api'; $env:HARNESS_API_KEY = 'local' }
 if (-not $SetupOnly -or $ConfigureApi -or $ApiBaseUrl -or $Model -or $LocalApi) {
     Invoke-Checked $agentPython $apiArgs
 }
-if ($SetupOnly) { Write-Host 'Setup complete. Run start.cmd to open Canvas.'; return }
+if ($SetupOnly) { Write-Host 'Setup complete. Run start.cmd for WebUI or start-console.cmd for the terminal.'; return }
+if ($Console) {
+    Invoke-Checked $agentPython @('-m', 'minisweagent.run.windows_console', '--cwd', $root)
+    return
+}
 $usedPorts = @([System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners() | ForEach-Object { $_.Port })
 if ($Port -lt 1 -or $Port -gt 65535) { throw 'Port must be between 1 and 65535.' }
 if ($PSBoundParameters.ContainsKey('Port') -and $Port -in $usedPorts) { throw "Port $Port is already in use." }

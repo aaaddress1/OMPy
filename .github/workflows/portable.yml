@@ -5,6 +5,11 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Build console runtime without downloading the WebUI
+        shell: powershell
+        run: |
+          ./start-canvas.ps1 -Console -SetupOnly
+          if (Test-Path '.tools/canvas-runtime/node_modules') { throw 'Console bootstrap unexpectedly installed the WebUI.' }
       - name: Build project-local runtime
         shell: powershell
         run: ./start-canvas.ps1 -SetupOnly
@@ -14,7 +19,7 @@ jobs:
           . ./scripts/project-env.ps1 -ProjectRoot $PWD.Path
           $uv = (Get-ChildItem .tools/uv-*/uv.exe | Select-Object -First 1).FullName
           & $uv pip install --python .tools/agent-env/Scripts/python.exe pytest
-          & .tools/agent-env/Scripts/python.exe -m pytest tests/test_portable.py tests/test_release.py tests/test_context_layers.py mini-swe-agent/tests/test_windows_console.py mini-swe-agent/tests/test_context_compaction.py mini-swe-agent/tests/models/test_windows_stream.py mini-swe-agent/tests/models/test_actions_toolcall.py -q --override-ini="addopts="
+          & .tools/agent-env/Scripts/python.exe -m pytest tests/test_portable.py tests/test_release.py tests/test_context_layers.py tests/test_console_ui.py mini-swe-agent/tests/test_windows_console.py mini-swe-agent/tests/test_context_compaction.py mini-swe-agent/tests/models/test_windows_stream.py mini-swe-agent/tests/models/test_actions_toolcall.py -q --override-ini="addopts="
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $node = (Get-ChildItem .tools/node-*/node.exe | Select-Object -First 1).FullName
           & $node scripts/check_canvas_privacy.mjs

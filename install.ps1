@@ -5,6 +5,7 @@ param(
     [string]$ApiBaseUrl,
     [Alias('ApiModel')][string]$Model,
     [switch]$LocalApi,
+    [switch]$Console,
     [switch]$ConfigureApi,
     [switch]$SetupOnly,
     [switch]$NoBrowser,
@@ -81,7 +82,7 @@ if (-not $projectRoot -or -not (Test-Path -LiteralPath (Join-Path $projectRoot '
     }
 }
 $forward = @{}
-foreach ($name in @('ApiBaseUrl', 'Model', 'LocalApi', 'ConfigureApi', 'SetupOnly', 'NoBrowser', 'Port')) {
+foreach ($name in @('ApiBaseUrl', 'Model', 'LocalApi', 'Console', 'ConfigureApi', 'SetupOnly', 'NoBrowser', 'Port')) {
     if ($PSBoundParameters.ContainsKey($name)) { $forward[$name] = $PSBoundParameters[$name] }
 }
 & (Join-Path $projectRoot 'start-canvas.ps1') @forward

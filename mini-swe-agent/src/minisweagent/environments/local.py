@@ -87,11 +87,13 @@ def _run(command: str | list[str], cwd: str, env: dict[str, str], timeout: int) 
     )
     try:
         stdout, _ = process.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
+    except (subprocess.TimeoutExpired, KeyboardInterrupt) as error:
         if os.name == "posix":
             os.killpg(process.pid, signal.SIGKILL)
         else:
             subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True)
         stdout, _ = process.communicate()
+        if isinstance(error, KeyboardInterrupt):
+            raise
         raise subprocess.TimeoutExpired(command, timeout, output=stdout)
     return subprocess.CompletedProcess(command, process.returncode, stdout=stdout)

@@ -18,6 +18,7 @@ from minisweagent.context_compaction import CompactContextManager, ContextCompac
 from minisweagent.context_manager import ContextWindowExceeded
 from minisweagent.environments.powershell import PowerShellEnvironment
 from minisweagent.models.windows_host import WindowsHostModel
+from minisweagent.run.console_ui import ConsoleUI
 
 app = typer.Typer(pretty_exceptions_enable=False)
 console = Console(highlight=False)
@@ -46,25 +47,28 @@ SYSTEM_PROMPT = """你是 Oh My PiPy（OMPy），執行於 Windows 的通用 AI 
 
 
 class ConsoleAgent(DefaultAgent):
+    def __init__(self, *args, ui: ConsoleUI, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ui = ui
+
     def query(self) -> dict:
-        with console.status("本地模型處理中…"):
+        with self.ui.responding():
             return super().query()
+
+    def execute_actions(self, message: dict) -> list[dict]:
+        outputs = []
+        for action in message.get("extra", {}).get("actions", []):
+            with self.ui.running_tool(action):
+                outputs.append(self.env.execute(action))
+        return self.add_messages(*self.model.format_observation_messages(message, outputs, self.get_template_vars()))
 
     def add_messages(self, *messages: dict) -> list[dict]:
         for message in messages:
-            if message["role"] in {"assistant", "exit"} and message.get("content"):
-                console.print("\n助理：", style="cyan")
-                console.print(message["content"], markup=False)
-            for action in message.get("extra", {}).get("actions", []):
-                console.print("\n記憶與證據回查：" if "context" in action else "\n執行 PowerShell：", style="yellow")
-                console.print(action["command"], markup=False)
+            self.ui.usage(message)
+            if message["role"] in {"assistant", "exit"} and message.get("content") and not message.get("extra", {}).get("streamed"):
+                self.ui.answer(message["content"])
             if message["role"] == "tool":
-                output = json.loads(message["content"])
-                console.print(f"工具結果（退出碼 {output['returncode']}）：", style="green")
-                console.print(output["output"][:2000], markup=False)
-                if output.get("exception_info"):
-                    console.print(output["exception_info"], markup=False)
-                console.print(f"完整輸出：{output['archive']}", markup=False)
+                self.ui.tool_result(message["tool_call_id"], json.loads(message["content"]))
         return super().add_messages(*messages)
 
 
@@ -96,6 +100,7 @@ def main(
     command_timeout: int = typer.Option(120, min=1, help="單一工具命令逾時秒數"),
     context_window: int | None = typer.Option(None, min=2048, help="harness 強制的上下文視窗（tokens）"),
     context_policy: Literal["compact", "sliding", "append", "memory"] | None = typer.Option(None, help="上下文策略"),
+    plain: bool = typer.Option(False, help="停用即時終端重繪，適合輸出轉存"),
 ):
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
@@ -109,43 +114,49 @@ def main(
     with httpx.Client(trust_env=False, timeout=120) as http_client, closing(
         create_model(http_client, reasoning, context_window=context_window, context_policy=context_policy)
     ) as model:
+        ui = ConsoleUI(model, cwd, session_dir, console=console)
+        ui.interactive = ui.interactive and not plain and sys.stdin.isatty()
+        model.on_delta = ui.delta if ui.interactive else None
         if isinstance(model.context, CompactContextManager):
-            model.context.on_event = lambda text: console.print(f"[上下文] {text}", markup=False)
-        console.print("Oh My PiPy (OMPy) Console Agent", style="bold cyan")
-        console.print(
-            f"模型：{model.config.model_name} | 推理：{model.config.reasoning_effort}"
-            f" | 視窗：{model.config.context_window} | 策略：{model.config.context_policy}",
-            markup=False,
-        )
-        console.print(f"工作目錄：{cwd}", markup=False)
-        console.print("輸入任務後按 Enter；/exit 離開、/new 清除對話、/reasoning none|low|high 切換推理。")
-        console.print(f"執行軌跡與上下文：{session_dir}\n", markup=False)
+            model.context.on_event = ui.notice
+        ui.welcome()
         turn = 0
         while True:
-            prompt = task if task is not None else console.input("[bold green]你> [/]").strip()
+            try:
+                prompt = task if task is not None else ui.prompt()
+            except EOFError:
+                break
+            except KeyboardInterrupt:
+                ui.notice("輸入已取消；Ctrl+D 或 /exit 離開")
+                continue
             if prompt == "/exit":
                 break
             if not prompt:
                 continue
+            if task is None and ui.command(prompt):
+                continue
             if task is None and prompt == "/new":
                 model.context.clear()
-                console.print("已清除目前對話；磁碟上的紀錄保留。")
+                ui.input_tokens, ui.output_tokens, ui.calls = 0, 0, 0
+                ui.notice("已開始新對話；先前紀錄留在本機")
                 continue
             if task is None and prompt.startswith("/reasoning "):
                 effort = prompt.split(maxsplit=1)[1]
                 if effort not in {"none", "low", "high"}:
-                    console.print("可使用：/reasoning none、/reasoning low、/reasoning high")
+                    ui.notice("可使用：/reasoning none、/reasoning low、/reasoning high")
                     continue
                 model.config.reasoning_effort = effort
-                console.print(f"推理程度已切換為 {effort}。")
+                ui.notice(f"推理程度已切換為 {effort}")
                 continue
             turn += 1
             model.run_dir = session_dir / f"turn-{turn:04d}"
             model.request_count = 0
+            ui.user(prompt)
             agent = ConsoleAgent(
                 model,
                 PowerShellEnvironment(output_dir=model.run_dir, cwd=str(cwd), timeout=command_timeout,
                                       context=model.context if isinstance(model.context, CompactContextManager) else None),
+                ui=ui,
                 system_template=SYSTEM_PROMPT,
                 instance_template="{{ task }}",
                 step_limit=step_limit,
@@ -155,12 +166,15 @@ def main(
             try:
                 result = agent.run(prompt)
             except (ContextWindowExceeded, ContextCompactionError) as e:
-                console.print(f"\n{e}", style="red", markup=False)
+                ui.notice(str(e), error=True)
                 result = {"exit_status": type(e).__name__}
+            except KeyboardInterrupt:
+                ui.notice("已中止本輪，可繼續輸入新任務", error=True)
+                result = {"exit_status": "Cancelled"}
             if result.get("exit_status") == "Submitted":
                 model.context.remember(agent.messages)
             else:
-                console.print(f"本輪停止：{result.get('exit_status')}，可查看執行軌跡。")
+                ui.notice(f"本輪停止：{result.get('exit_status')}")
             if task is not None:
                 raise typer.Exit(code=0 if result.get("exit_status") == "Submitted" else 1)
 

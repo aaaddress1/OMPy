@@ -4,6 +4,8 @@
 
 Windows 專案內的通用 AI 助理，可協助程式開發、資料分析、文件處理、研究與自動化等任務。以 **OpenHands Agent Canvas** 作為 WebUI，透過 **ACP stdio** 啟動此份 mini-swe 原始碼；模型與 PowerShell 工具迴圈由 mini-swe 執行。
 
+核心引擎、預設提示詞、工具與 UI 都不綁定特定領域。`experiments/` 中的鑑識資料只用於長上下文實驗，不載入核心引擎；這類案例的完成結果也不構成圖靈完備性的證明。
+
 ## 一鍵啟動
 
 1. 下載這份專案並解壓縮，或從自己的 GitHub repository clone 下來。
@@ -68,6 +70,25 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Configure
 安裝器固定 Node、uv、Python 和 OpenHands 的版本；Node／uv 下載會比對 SHA256，mini-swe 的 Windows runtime 與 Canvas 前端依賴使用 lock 檔。一般重新啟動會重用已建好的環境。
 
 若舊版 UI 還在執行，未指定連接埠時會自動選擇空閒的入口與內部連接埠，不會停止舊版服務；實際網址會顯示在啟動視窗。
+
+## Console UI
+
+雙擊 **`start-console.cmd`**，或在專案目錄執行：
+
+```powershell
+.\start-console.cmd
+# 首次安裝也可以直接選終端模式
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Console
+```
+
+終端介面參考 [Oh My Pi](https://github.com/can1357/oh-my-pi) 的對話、工具卡片與底部狀態列，使用 Rich 和 prompt-toolkit 實作。沿用同一組 `.env`、模型轉接器與四層上下文管理，不需要選供應商；終端模式只準備專案內 Python 環境，不下載 Node 或 OpenHands WebUI。
+
+- 回覆即時串流，支援 Markdown 與程式碼配色。思考區只顯示模型實際回傳的推理欄位，可收起；未回傳時不補造內容。
+- 工具結果預設六行，可用 `/last` 展開完整的上一個工具輸出。錯誤退出碼、記憶操作與背景摘要會分別顯示。
+- 輸入編輯器支援多行貼上、Alt+Enter 換行、Enter 送出、Tab 指令補全和方向鍵歷史；提示列顯示模型上下文用量、輸出 tokens 與推理設定。
+- `/help` 查看指令；`/thoughts` 切換思考顯示，`/tools` 切換工具預覽，`/new` 新對話，`/exit` 或空輸入時 Ctrl+D 離開。Ctrl+C 中止目前輸入或執行。
+
+需要輸出轉存時，先載入 `scripts/project-env.ps1`，再使用專案的 `.tools/agent-env/Scripts/python.exe -m minisweagent.run.windows_console --plain`。`scripts/preview_console.py` 可產生純合成內容的 SVG／HTML 預覽，不載入 API key 或呼叫模型。WebUI 仍由 `start.cmd` 啟動。
 
 ## 所有專案資料放在哪裡
 
