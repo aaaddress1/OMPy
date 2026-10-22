@@ -17,6 +17,7 @@ from minisweagent.agents.default import DefaultAgent
 from minisweagent.context_compaction import CompactContextManager, ContextCompactionError
 from minisweagent.context_manager import ContextWindowExceeded
 from minisweagent.environments.powershell import PowerShellEnvironment
+from minisweagent.models.member_models import SELECTION, ChatGPTMemberModel
 from minisweagent.models.windows_host import WindowsHostModel
 from minisweagent.run.console_ui import ConsoleUI
 
@@ -76,6 +77,17 @@ def create_model(http_client: httpx.Client, reasoning: str | None = None, **over
     """Build the model from .env/HARNESS_* settings; non-None overrides (e.g. context_window) win."""
     load_dotenv(PROJECT_ROOT / ".env", override=False, encoding="utf-8-sig")
     load_dotenv(PROJECT_ROOT.parent / ".env", override=False, encoding="utf-8-sig")
+    selection = json.loads(SELECTION.read_text(encoding="utf-8")) if SELECTION.exists() else {}
+    provider = os.getenv("HARNESS_PROVIDER", selection.get("provider", "api"))
+    if selection.get("provider") != provider:
+        selection = {}
+    if provider == "chatgpt":
+        return ChatGPTMemberModel(http_client=http_client, model_name=selection.get("model") or
+            "gpt-6.1-sol", reasoning_effort=reasoning or "low",
+            request_limit=selection.get("request_limit", 3), **({"context_window": 32768,
+                "max_output_tokens": 2048, "context_policy": "compact"} | {k: v for k, v in overrides.items() if v is not None}))
+    if provider != "api":
+        raise ValueError("未知模型連線方式，請選擇 api 或 chatgpt。")
     api_key = os.getenv("HARNESS_API_KEY", "")
     if not api_key:
         raise ValueError("請在 mini-swe-agent/.env 或環境中設定 HARNESS_API_KEY。")

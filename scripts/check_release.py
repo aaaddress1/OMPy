@@ -16,6 +16,7 @@ PATTERNS = {
     "personal Unix path": re.compile(rb"/(?:Users|home)/(?!\.{1,3}/)[A-Za-z0-9_.-]+/"),
     "credential format": re.compile(rb"(?:sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{25,}|github_pat_[A-Za-z0-9_]{25,}|AKIA[0-9A-Z]{16})"),
     "private key": re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+    "OAuth JWT": re.compile(rb"eyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}"),
 }
 PRIVATE_NETWORKS = [ipaddress.ip_network((int.from_bytes(bytes(octets), "big"), prefix))
                     for octets, prefix in (((10, 0, 0, 0), 8), ((172, 16, 0, 0), 12), ((192, 168, 0, 0), 16))]

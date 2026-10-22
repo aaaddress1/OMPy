@@ -91,6 +91,36 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Console
 
 需要輸出轉存時，先載入 `scripts/project-env.ps1`，再使用專案的 `.tools/agent-env/Scripts/python.exe -m minisweagent.run.windows_console --plain`。`scripts/preview_console.py` 可產生純合成內容的 SVG／HTML 預覽，不載入 API key 或呼叫模型。WebUI 仍由 `start.cmd` 啟動。
 
+## ChatGPT 會員連線（小量試用）
+
+預設仍讀取原本 `.env`。會員登入與連線選擇另存在忽略提交的 `.runtime/`，不改寫 API 網址、模型或 key。先安裝專案環境，再從專案目錄執行：
+
+```powershell
+# 開啟官方瀏覽器登入，完成後將 OMPy 切到 ChatGPT 會員
+.\start-console.cmd -MemberLogin chatgpt
+
+# 登入完成後啟動對話；WebUI 也共用這個連線選擇
+.\start-console.cmd
+```
+
+ChatGPT 使用 [Sign in with ChatGPT](https://developers.openai.com/siwc/token-sharing-open-source) 的動態註冊、PKCE、nonce、ID token 簽章驗證及正式 Responses API。登入需勾選使用會員方案的授權；可用模型須在該帳號清單中。預設 `gpt-6.1-sol`，不使用另一個應用程式的登入 token。請在 [ChatGPT Usage](https://chatgpt.com/settings/usage) 設定 OMPy 的週用量比例與是否允許使用額外 credits。
+
+初期每次啟動最多 3 次會員請求，背景摘要也計入；這不是精確的 token 上限。會員用量由服務端計算，OMPy 不會自動重試、切換成 API key 或使用另一個帳號。用量用完時停止本輪。不要以請求次數當作美元或會員百分比的硬上限。
+
+管理帳號、回到原本 API，以及手動執行一次極短測試：
+
+```powershell
+. ./scripts/project-env.ps1 -ProjectRoot $PWD.Path
+& ./.tools/agent-env/Scripts/python.exe -m minisweagent.run.member_login status
+& ./.tools/agent-env/Scripts/python.exe -m minisweagent.run.member_login use api
+# 重新選擇已登入的會員，亦可透過 --model 指定該帳號支援的模型
+& ./.tools/agent-env/Scripts/python.exe -m minisweagent.run.member_login use chatgpt
+# 此命令會使用目前選取的會員用量：只送出一次「OMPy OK」測試
+& ./.tools/agent-env/Scripts/python.exe scripts/check_member.py
+```
+
+`member_login chatgpt --account <client_id>` 可重新登入既有帳號；未帶 `--account` 時新增註冊。`member_login logout chatgpt` 會撤銷目前的 renewable session 並切回 API。ChatGPT 憑證以 Windows DPAPI 加密並原子寫入，更新 token 有跨程序鎖；搬到另一台機器或 Windows 帳號後需重新登入。這些登入紀錄不包含 ChatGPT 原本的對話或記憶。
+
 ## 所有專案資料放在哪裡
 
 | 位置 | 用途 | 提交 GitHub |

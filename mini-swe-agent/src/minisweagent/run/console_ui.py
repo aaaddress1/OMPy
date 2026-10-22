@@ -115,7 +115,8 @@ class ConsoleUI:
 
     def header(self):
         title = Text.assemble(("◈  Oh My PiPy", f"bold {ACCENT}"), ("  OMPy", MUTED))
-        details = Text.assemble(("通用工作助理", "white"), ("  ·  ", MUTED), (self.model.config.model_name, ACCENT),
+        details = Text.assemble(("通用工作助理", "white"), ("  ·  ", MUTED),
+                                (getattr(self.model, "provider_label", "API") + " · " + self.model.config.model_name, ACCENT),
                                 ("\n" + str(self.cwd), MUTED))
         return Panel(Group(title, Text(""), details), border_style=BORDER, padding=(1, 2), box=box.ROUNDED)
 
@@ -123,9 +124,11 @@ class ConsoleUI:
         budget = self.model.context.input_budget
         ratio = min(1.0, self.input_tokens / budget) if budget else 0.0
         bar = "━" * round(ratio * 10) + "─" * (10 - round(ratio * 10))
+        member = (f" · 會員 {self.model.member_calls}/{self.model.request_limit} requests"
+                  if hasattr(self.model, "member_calls") else "")
         return (f"{bar}  {compact_number(self.input_tokens)} / {compact_number(budget)} context"
                 f"  ·  ↓ {compact_number(self.output_tokens)}  ·  {self.calls} calls"
-                f"  ·  reasoning {self.model.config.reasoning_effort}  ·  {self.elapsed:.1f}s")
+                f"  ·  reasoning {self.model.config.reasoning_effort}  ·  {self.elapsed:.1f}s" + member)
 
     def welcome(self) -> None:
         self.console.print(self.header())

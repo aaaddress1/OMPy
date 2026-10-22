@@ -5,6 +5,7 @@ param(
     [Alias('ApiModel')][string]$Model,
     [switch]$LocalApi,
     [switch]$Console,
+    [ValidateSet('chatgpt')][string]$MemberLogin,
     [switch]$NoBrowser,
     [int]$Port = 8000
 )
@@ -130,6 +131,15 @@ if (-not $Console) {
     # Backend warmup can initialize settings; apply the project's default after it finishes too.
     Invoke-Checked $agentPython @((Join-Path $root 'scripts\configure_canvas.py'), '--python', $agentPython)
 }
+if ($MemberLogin) {
+    Invoke-Checked $agentPython @('-m', 'minisweagent.run.member_login', $MemberLogin)
+    return
+}
+$memberProvider = $false
+$providerPath = Join-Path $root '.runtime\provider.json'
+if (Test-Path -LiteralPath $providerPath) {
+    $memberProvider = (Get-Content -LiteralPath $providerPath -Raw | ConvertFrom-Json).provider -eq 'chatgpt'
+}
 $apiArgs = @((Join-Path $root 'scripts\configure_canvas.py'), '--check-env')
 if ($ConfigureApi) { $apiArgs += '--configure-api' }
 if ($PSBoundParameters.ContainsKey('ApiBaseUrl')) {
@@ -141,7 +151,7 @@ if ($PSBoundParameters.ContainsKey('Model')) {
     $env:HARNESS_MODEL = $Model
 }
 if ($LocalApi) { $apiArgs += '--local-api'; $env:HARNESS_API_KEY = 'local' }
-if (-not $SetupOnly -or $ConfigureApi -or $ApiBaseUrl -or $Model -or $LocalApi) {
+if ((-not $SetupOnly -and -not $memberProvider) -or $ConfigureApi -or $ApiBaseUrl -or $Model -or $LocalApi) {
     Invoke-Checked $agentPython $apiArgs
 }
 if ($SetupOnly) { Write-Host 'Setup complete. Run start.cmd for WebUI or start-console.cmd for the terminal.'; return }

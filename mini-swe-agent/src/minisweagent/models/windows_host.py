@@ -70,12 +70,7 @@ class WindowsHostModel:
         }
         path.parent.mkdir(parents=True, exist_ok=True)
         path.with_suffix(".request.json").write_text(json.dumps(request, ensure_ascii=False, indent=2), encoding="utf-8")
-        # Own the worker's client so session shutdown cannot close an in-flight summary's transport.
-        with OpenAI(
-            base_url=str(self.client.base_url), api_key=self.client.api_key, max_retries=0,
-            http_client=httpx.Client(trust_env=False, timeout=self.client.timeout),
-        ) as client:
-            response = client.chat.completions.create(**request)
+        response = self.complete(request, summary=True)
         path.write_text(json.dumps(response.model_dump(mode="json"), ensure_ascii=False, indent=2), encoding="utf-8")
         choice = response.choices[0]
         if choice.finish_reason != "stop" or not (choice.message.content or "").strip():
@@ -114,11 +109,7 @@ class WindowsHostModel:
         (self.run_dir / f"request-{self.request_count:04d}.json").write_text(
             json.dumps(request, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        if self.on_delta is not None:
-            with self.client.chat.completions.create(**request) as stream:
-                response = collect_completion(stream, self.on_delta)
-        else:
-            response = self.client.chat.completions.create(**request)
+        response = self.complete(request)
         if response.usage:
             self.context.observe(response.usage.prompt_tokens)
         message = response.choices[0].message.model_dump(exclude_none=True)
@@ -141,6 +132,16 @@ class WindowsHostModel:
             message["role"] = "exit"
             extra.update(exit_status="Submitted", submission=message["content"])
         return message | {"extra": extra}
+
+    def complete(self, request: dict, *, summary: bool = False):
+        if summary:
+            with OpenAI(base_url=str(self.client.base_url), api_key=self.client.api_key, max_retries=0,
+                        http_client=httpx.Client(trust_env=False, timeout=self.client.timeout)) as client:
+                return client.chat.completions.create(**request)
+        if self.on_delta is not None:
+            with self.client.chat.completions.create(**request) as stream:
+                return collect_completion(stream, self.on_delta)
+        return self.client.chat.completions.create(**request)
 
     def parse_actions(self, calls: list) -> list[dict]:
         actions = []
@@ -178,4 +179,5 @@ class WindowsHostModel:
         return self.config.model_dump()
 
     def serialize(self) -> dict:
-        return {"info": {"config": {"model": self.config.model_dump(), "model_type": f"{__name__}.WindowsHostModel"}}}
+        return {"info": {"config": {"model": self.config.model_dump(),
+            "model_type": f"{type(self).__module__}.{type(self).__name__}"}}}
